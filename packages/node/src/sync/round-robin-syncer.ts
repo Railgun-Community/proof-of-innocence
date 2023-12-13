@@ -63,7 +63,7 @@ export class RoundRobinSyncer {
         await POINodeRequest.getNodeStatusAllNetworks(nodeURL);
 
       dbg('');
-      dbg(`-- Syncing with ${nodeURL} -- `);
+      dbg(`-- 🔁 Syncing with ${nodeURL} 🔁 -- `);
 
       const totalEventsSynced = await this.updatePOIEventListAllNetworks(
         nodeURL,
@@ -196,10 +196,11 @@ export class RoundRobinSyncer {
       networkName,
       txidVersion,
     );
-    if (
-      POIEventList.getTotalEventsLength(nodePOIEventLengths) <=
-      currentListLength
-    ) {
+
+    const nodeTotalEventsLength =
+      POIEventList.getTotalEventsLength(nodePOIEventLengths);
+
+    if (nodeTotalEventsLength <= currentListLength) {
       return 0;
     }
 
@@ -232,7 +233,10 @@ export class RoundRobinSyncer {
 
     // Update a range of events from this list.
     const startIndex = currentListLength;
-    const endIndex = startIndex + QueryLimits.MAX_EVENT_QUERY_RANGE_LENGTH - 1;
+    const endIndex = Math.min(
+      startIndex + QueryLimits.MAX_EVENT_QUERY_RANGE_LENGTH - 1,
+      nodeTotalEventsLength - 1,
+    );
 
     return this.addPOIListEventRange(
       nodeURL,
@@ -252,7 +256,7 @@ export class RoundRobinSyncer {
     startIndex: number,
     endIndex: number,
   ): Promise<number> {
-    const signedPOIEvents = await POINodeRequest.getPOIListEventRange(
+    const poiSyncedListEvents = await POINodeRequest.getPOIListEventRange(
       nodeURL,
       networkName,
       txidVersion,
@@ -262,16 +266,16 @@ export class RoundRobinSyncer {
     );
 
     dbg(
-      `Syncing ${signedPOIEvents.length} POI events to list ${listKey} for network ${networkName}`,
+      `Syncing ${poiSyncedListEvents.length} POI events to list ${listKey} for network ${networkName}`,
     );
 
-    await POIEventList.verifyAndAddSignedPOIEvents(
+    await POIEventList.verifyAndAddSignedPOIEventsWithValidatedMerkleroots(
       listKey,
       networkName,
       txidVersion,
-      signedPOIEvents,
+      poiSyncedListEvents,
     );
-    return signedPOIEvents.length;
+    return poiSyncedListEvents.length;
   }
 
   async updateTransactProofMempoolsAllNetworks(

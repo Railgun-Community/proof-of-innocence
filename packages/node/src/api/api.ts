@@ -57,14 +57,19 @@ import {
   SubmitLegacyTransactProofsBodySchema,
   ValidatePOIMerklerootsBodySchema,
   SubmitSingleCommitmentProofsBodySchema,
+  GetPOIsPerBlindedCommitmentBodySchema,
+  GetPOIMerkletreeLeavesBodySchema,
 } from './schemas';
 import 'dotenv/config';
 import {
   GetLegacyTransactProofsParams,
   GetPOIListEventRangeParams,
+  GetPOIMerkletreeLeavesParams,
+  GetPOIsPerBlindedCommitmentParams,
+  POISyncedListEvent,
+  POIsPerBlindedCommitmentMap,
   RemoveTransactProofParams,
   SignedBlockedShield,
-  SignedPOIEvent,
   SubmitPOIEventParams,
   SubmitValidatedTxidAndMerklerootParams,
 } from '../models/poi-types';
@@ -73,6 +78,7 @@ import { POINodeRequest } from './poi-node-request';
 import { TransactProofMempoolPruner } from '../proof-mempool/transact-proof-mempool-pruner';
 import { LegacyTransactProofMempool } from '../proof-mempool/legacy/legacy-transact-proof-mempool';
 import { SingleCommitmentProofManager } from '../single-commitment-proof/single-commitment-proof-manager';
+import { shouldLogVerbose } from '../util/logging';
 
 const dbg = debug('poi:api');
 
@@ -181,6 +187,10 @@ export class API {
       route,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       async (req: Request, res: Response, next: NextFunction) => {
+        if (shouldLogVerbose()) {
+          dbg(`GET request ${route}`);
+          dbg({ ...req.params, ...req.body });
+        }
         try {
           const value: ReturnType = await handler(req);
           return res.status(200).json(value);
@@ -229,6 +239,8 @@ export class API {
       validate,
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       async (req: Request, res: Response, next: NextFunction) => {
+        dbg(`POST request ${route}`);
+        dbg({ ...req.params, ...req.body });
         try {
           const value: ReturnType = await handler(req);
           if (isDefined(value)) {
@@ -312,7 +324,7 @@ export class API {
     //   },
     // );
 
-    this.safePost<SignedPOIEvent[]>(
+    this.safePost<POISyncedListEvent[]>(
       '/poi-events/:chainType/:chainID',
       async (req: Request) => {
         const { chainType, chainID } = req.params;
@@ -344,6 +356,42 @@ export class API {
       },
       SharedChainTypeIDParamsSchema,
       GetPOIListEventRangeBodySchema,
+    );
+
+    this.safePost<string[]>(
+      '/poi-merkletree-leaves/:chainType/:chainID',
+      async (req: Request) => {
+        const { chainType, chainID } = req.params;
+        const { txidVersion, listKey, startIndex, endIndex } =
+          req.body as GetPOIMerkletreeLeavesParams;
+        if (!this.hasListKey(listKey)) {
+          return [];
+        }
+        const networkName = networkNameForSerializedChain(chainType, chainID);
+
+        const rangeLength = endIndex - startIndex;
+        if (
+          rangeLength > QueryLimits.MAX_POI_MERKLETREE_LEAVES_QUERY_RANGE_LENGTH
+        ) {
+          throw new Error(
+            `Max event query range length is ${QueryLimits.MAX_POI_MERKLETREE_LEAVES_QUERY_RANGE_LENGTH}`,
+          );
+        }
+        if (rangeLength < 0) {
+          throw new Error(`Invalid query range`);
+        }
+
+        const events = await POIMerkletreeManager.getPOIMerkletreeLeaves(
+          listKey,
+          networkName,
+          txidVersion,
+          startIndex,
+          endIndex,
+        );
+        return events;
+      },
+      SharedChainTypeIDParamsSchema,
+      GetPOIMerkletreeLeavesBodySchema,
     );
 
     this.safePost<TransactProofData[]>(
@@ -418,7 +466,7 @@ export class API {
       '/submit-poi-event/:chainType/:chainID',
       async (req: Request) => {
         const { chainType, chainID } = req.params;
-        const { txidVersion, listKey, signedPOIEvent } =
+        const { txidVersion, listKey, signedPOIEvent, validatedMerkleroot } =
           req.body as SubmitPOIEventParams;
         if (!this.hasListKey(listKey)) {
           return;
@@ -430,11 +478,11 @@ export class API {
         );
 
         // Submit and verify the proof
-        await POIEventList.verifyAndAddSignedPOIEvents(
+        await POIEventList.verifyAndAddSignedPOIEventsWithValidatedMerkleroots(
           listKey,
           networkName,
           txidVersion,
-          [signedPOIEvent],
+          [{ signedPOIEvent, validatedMerkleroot }],
         );
       },
       SharedChainTypeIDParamsSchema,
@@ -623,6 +671,35 @@ export class API {
       },
       SharedChainTypeIDParamsSchema,
       GetPOIsPerListBodySchema,
+    );
+
+    this.safePost<POIsPerBlindedCommitmentMap>(
+      '/pois-per-blinded-commitment/:chainType/:chainID',
+      async (req: Request) => {
+        const { chainType, chainID } = req.params;
+        const { txidVersion, listKey, blindedCommitmentDatas } =
+          req.body as GetPOIsPerBlindedCommitmentParams;
+
+        const networkName = networkNameForSerializedChain(chainType, chainID);
+
+        if (
+          blindedCommitmentDatas.length >
+          QueryLimits.GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS
+        ) {
+          throw new Error(
+            `Too many blinded commitments: max ${QueryLimits.GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS}`,
+          );
+        }
+
+        return POIMerkletreeManager.poiStatusPerBlindedCommitment(
+          listKey,
+          networkName,
+          txidVersion,
+          blindedCommitmentDatas,
+        );
+      },
+      SharedChainTypeIDParamsSchema,
+      GetPOIsPerBlindedCommitmentBodySchema,
     );
 
     this.safePost<MerkleProof[]>(

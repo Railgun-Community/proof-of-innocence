@@ -1,4 +1,9 @@
-import { POIEventType, TXIDVersion } from '@railgun-community/shared-models';
+import {
+  BlindedCommitmentData,
+  POIEventType,
+  POIStatus,
+  TXIDVersion,
+} from '@railgun-community/shared-models';
 
 export type POIEventShield = {
   type: POIEventType.Shield;
@@ -45,6 +50,7 @@ export type SubmitPOIEventParams = {
   txidVersion: TXIDVersion;
   signedPOIEvent: SignedPOIEvent;
   listKey: string;
+  validatedMerkleroot: string;
 };
 
 export type SubmitValidatedTxidAndMerklerootParams = {
@@ -73,4 +79,26 @@ export type GetPOIListEventRangeParams = {
   listKey: string;
   startIndex: number;
   endIndex: number;
+};
+
+export type GetPOIMerkletreeLeavesParams = {
+  txidVersion: TXIDVersion;
+  listKey: string;
+  startIndex: number;
+  endIndex: number;
+};
+
+export type POISyncedListEvent = {
+  signedPOIEvent: SignedPOIEvent;
+  validatedMerkleroot: string;
+};
+
+export type GetPOIsPerBlindedCommitmentParams = {
+  txidVersion: TXIDVersion;
+  listKey: string;
+  blindedCommitmentDatas: BlindedCommitmentData[];
+};
+
+export type POIsPerBlindedCommitmentMap = {
+  [blindedCommitment: string]: POIStatus;
 };

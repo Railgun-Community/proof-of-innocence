@@ -17,7 +17,6 @@ import {
   ValidatePOIMerklerootsParams,
   BlindedCommitmentData,
 } from '@railgun-community/shared-models';
-import axios, { AxiosError } from 'axios';
 import {
   GetLegacyTransactProofsParams,
   GetPOIListEventRangeParams,
@@ -25,19 +24,12 @@ import {
   GetPOIsPerBlindedCommitmentParams,
   POISyncedListEvent,
   POIsPerBlindedCommitmentMap,
-  RemoveTransactProofParams,
   SignedBlockedShield,
   SignedPOIEvent,
   SubmitPOIEventParams,
-  SubmitValidatedTxidAndMerklerootParams,
-} from '../models/poi-types';
+} from '../../node/src/models/poi-types';
+import axios, { AxiosError } from 'axios';
 import debug from 'debug';
-import {
-  getListPublicKey,
-  signRemoveProof,
-  signValidatedTxidMerkleroot,
-} from '../util/ed25519';
-import { isListProvider } from '../config/general';
 
 const dbg = debug('poi:request');
 
@@ -282,37 +274,6 @@ export class POINodeRequest {
     );
   };
 
-  static removeTransactProof = async (
-    nodeURL: string,
-    networkName: NetworkName,
-    txidVersion: TXIDVersion,
-    listKey: string,
-    blindedCommitmentsOut: string[],
-    railgunTxidIfHasUnshield: string,
-  ): Promise<void> => {
-    const chain = NETWORK_CONFIG[networkName].chain;
-    const route = `remove-transact-proof/${chain.type}/${chain.id}`;
-    const url = POINodeRequest.getNodeRouteURL(nodeURL, route);
-
-    if (!isListProvider()) {
-      // Cannot sign without list.
-      return;
-    }
-
-    const signature = await signRemoveProof(
-      blindedCommitmentsOut,
-      railgunTxidIfHasUnshield,
-    );
-
-    await POINodeRequest.postRequest<RemoveTransactProofParams, void>(url, {
-      txidVersion,
-      listKey,
-      blindedCommitmentsOut,
-      railgunTxidIfHasUnshield,
-      signature,
-    });
-  };
-
   static submitPOIEvent = async (
     nodeURL: string,
     networkName: NetworkName,
@@ -394,37 +355,5 @@ export class POINodeRequest {
         poiMerkleroots,
       },
     );
-  };
-
-  static submitValidatedTxidAndMerkleroot = async (
-    nodeURL: string,
-    networkName: NetworkName,
-    txidVersion: TXIDVersion,
-    txidIndex: number,
-    merkleroot: string,
-  ) => {
-    const chain = NETWORK_CONFIG[networkName].chain;
-    const route = `submit-validated-txid/${chain.type}/${chain.id}`;
-    const url = POINodeRequest.getNodeRouteURL(nodeURL, route);
-
-    const listKey = await getListPublicKey();
-
-    if (!isListProvider()) {
-      // Cannot sign without list.
-      return;
-    }
-
-    const signature = await signValidatedTxidMerkleroot(txidIndex, merkleroot);
-
-    await POINodeRequest.postRequest<
-      SubmitValidatedTxidAndMerklerootParams,
-      void
-    >(url, {
-      txidVersion,
-      txidIndex,
-      merkleroot,
-      signature,
-      listKey,
-    });
   };
 }

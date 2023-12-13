@@ -24,11 +24,17 @@ export class ConnectedNodeStartup {
       return;
     }
 
+    dbg('Making initial connection to nodes...');
+
     await Promise.all(
       this.nodeConfigs.map(async ({ nodeURL }) => {
         try {
+          dbg(`Connecting to node ${nodeURL}...`);
+
           const nodeStatusAllNetworks =
             await POINodeRequest.getNodeStatusAllNetworks(nodeURL);
+
+          // Check here if connection is successful and node is responding to requests
 
           // Check all list keys
           this.listKeys.forEach(listKey => {
@@ -64,6 +70,8 @@ export class ConnectedNodeStartup {
 
           // The "minimum next add index" ensures that no connected nodes have a more-updated list than this node.
           // If they do, this node will wait to add new events until it's synced.
+          dbg(`Updating minimum next add index...`);
+
           const listKey = ListProviderPOIEventQueue.listKey;
           for (const networkName of Config.NETWORK_NAMES) {
             const poiEventLengths =
@@ -74,10 +82,17 @@ export class ConnectedNodeStartup {
               ? POIEventList.getTotalEventsLength(poiEventLengths)
               : 0;
             const syncedIndex = eventListLength;
+            dbg(
+              `Minimum next-add index: ${listKey} ${networkName} ${syncedIndex}`,
+            );
+
             ListProviderPOIEventQueue.tryUpdateMinimumNextAddIndex(
               listKey,
               networkName,
               syncedIndex,
+            );
+            dbg(
+              `Updated minimum next-add index: ${listKey} ${networkName} ${syncedIndex}`,
             );
           }
         } catch (err) {

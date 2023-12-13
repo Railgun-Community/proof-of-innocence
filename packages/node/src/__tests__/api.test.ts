@@ -1,9 +1,11 @@
 import { ProofOfInnocenceNode } from '../proof-of-innocence-node';
 import { LocalListProvider } from '../local-list-provider';
 import { MOCK_LIST_KEYS } from '../tests/mocks.test';
+import * as WalletModule from '../engine/wallet';
 import {
   BlindedCommitmentData,
   BlindedCommitmentType,
+  NetworkName,
   NodeStatusAllNetworks,
   SingleCommitmentProofsData,
   TXIDVersion,
@@ -13,6 +15,8 @@ import axios, { AxiosError } from 'axios';
 import 'dotenv/config';
 import chai from 'chai';
 import chaiAsPromised from 'chai-as-promised';
+import { BlockedShieldsCache } from '../shields/blocked-shields-cache';
+import sinon from 'sinon';
 
 chai.use(chaiAsPromised);
 const { expect } = chai;
@@ -26,6 +30,8 @@ let node3011: ProofOfInnocenceNode;
 let apiUrl: string;
 
 let base64Credentials: string;
+
+let stubGetAllShields: sinon.SinonStub;
 
 class AxiosTest {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,13 +64,16 @@ class AxiosTest {
 }
 
 describe('api', function () {
-  // Start services before all tests
   before(async function () {
     this.timeout(30000);
 
     const listProvider = new LocalListProvider(listKey);
 
     const host = 'localhost';
+
+    stubGetAllShields = sinon
+      .stub(WalletModule, 'getNewShieldsFromWallet')
+      .resolves([]);
 
     node3011 = new ProofOfInnocenceNode(host, '3011', [], listProvider);
     await node3011.start();
@@ -89,6 +98,7 @@ describe('api', function () {
   });
 
   after(async function () {
+    stubGetAllShields?.restore();
     await node3010.stop();
     await node3011.stop();
   });
@@ -186,7 +196,11 @@ describe('api', function () {
   it('Should return 200 for POST /blocked-shields', async () => {
     const chainType = '0';
     const chainID = '5';
-    const bloomFilterSerialized = 'someValidSerializedData';
+    const bloomFilterSerialized = BlockedShieldsCache.serializeBloomFilter(
+      listKey,
+      NetworkName.EthereumGoerli,
+      txidVersion,
+    );
 
     const response = await AxiosTest.postRequest(
       `${apiUrl}/blocked-shields/${chainType}/${chainID}`,
